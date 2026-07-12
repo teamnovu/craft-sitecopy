@@ -311,15 +311,22 @@ class SiteCopy extends Component
             $hasFieldSelection = ($elementSettings['hasFieldSelection'] ?? null) === '1';
             $fieldsToSync = $hasFieldSelection ? ($elementSettings['fieldsToSync'] ?? []) : null;
 
-            $job = new SyncElementContent([
-                'elementId'        => (int)$entry->id,
-                'sourceSiteId'     => $elementSettings['sourceSite'],
-                'sites'            => $matchingSites,
-                'attributesToCopy' => $attributesToCopy,
-                'fieldsToSync'     => $fieldsToSync,
-            ]);
+            $elementId = (int)$entry->id;
+            $sourceSiteId = $elementSettings['sourceSite'];
 
-            Craft::$app->onAfterRequest(function() use ($job) {
+            Craft::$app->onAfterRequest(function() use ($elementId, $sourceSiteId, $matchingSites, $attributesToCopy, $fieldsToSync) {
+                // Snapshot each target site's modification date *after* the source save
+                // has fully settled, so it is the baseline the queued job compares
+                // against. Any target site edited after this point is left untouched.
+                $job = new SyncElementContent([
+                    'elementId'         => $elementId,
+                    'sourceSiteId'      => $sourceSiteId,
+                    'sites'             => $matchingSites,
+                    'attributesToCopy'  => $attributesToCopy,
+                    'fieldsToSync'      => $fieldsToSync,
+                    'targetDateUpdated' => SyncElementContent::readSiteDateUpdated($elementId, $matchingSites),
+                ]);
+
                 $priority = (int)$this->settings->combinedSettingsQueuePriority;
                 Queue::push($job, $priority);
             });

@@ -8,6 +8,8 @@ namespace teamnovu\sitecopy\jobs;
 
 use Craft;
 use craft\base\Element;
+use craft\db\Query;
+use craft\db\Table;
 use craft\queue\BaseJob;
 use teamnovu\sitecopy\SiteCopy;
 use Exception;
@@ -47,8 +49,54 @@ class SyncElementContent extends BaseJob
      */
     public $fieldsToSync = null;
 
+    /**
+     * @var array<string,string>|null Snapshot of each target site's
+     * `elements_sites.dateUpdated` taken at the moment the copy was requested,
+     * keyed by site ID (as a string). When the job runs, any target site whose
+     * current `dateUpdated` no longer matches this snapshot was edited after the
+     * copy was queued and is skipped, so a queued copy can never overwrite newer
+     * content on the target site.
+     *
+     * `null` disables the check. This keeps jobs that were queued by an older
+     * plugin version — and deserialized after an upgrade — working unchanged.
+     */
+    public $targetDateUpdated = null;
+
     // Public Methods
     // =========================================================================
+
+    /**
+     * Reads the current `elements_sites.dateUpdated` for the given element on
+     * each of the given sites, keyed by site ID (as a string).
+     *
+     * This is the per-site modification date. It is intentionally not read from
+     * `Element::$dateUpdated`, which reflects the shared `elements` table and is
+     * therefore identical across all of an element's sites.
+     *
+     * @param int $elementId
+     * @param int[] $siteIds
+     * @return array<string,string>
+     */
+    public static function readSiteDateUpdated(int $elementId, array $siteIds): array
+    {
+        if (empty($siteIds)) {
+            return [];
+        }
+
+        $pairs = (new Query())
+            ->select(['siteId', 'dateUpdated'])
+            ->from(Table::ELEMENTS_SITES)
+            ->where(['elementId' => $elementId, 'siteId' => $siteIds])
+            ->pairs();
+
+        $normalized = [];
+
+        foreach ($pairs as $siteId => $dateUpdated) {
+            $normalized[(string)$siteId] = $dateUpdated;
+        }
+
+        return $normalized;
+    }
 
     /**
      * @inheritdoc
@@ -109,6 +157,19 @@ class SyncElementContent extends BaseJob
                 'total' => $totalSites,
             ]));
 
+            // Skip any target site that was edited after this copy was queued, so a
+            // delayed job can't overwrite newer content (e.g. an editor pasting the
+            // translation on the target site while the copy still sits in the queue).
+            if ($this->targetChangedSinceQueued($siteId)) {
+                Craft::warning(
+                    "Skipped copying element {$this->elementId} to site {$siteId}: it was modified after the copy was queued.",
+                    __METHOD__
+                );
+
+                $currentSite++;
+                continue;
+            }
+
             /** @var Element $siteElement */
             $siteElement = $elementsService->getElementById($sourceElement->id, get_class($sourceElement), $siteId);
 
@@ -157,6 +218,38 @@ class SyncElementContent extends BaseJob
 
             $currentSite++;
         }
+    }
+
+    /**
+     * Returns whether the given target site was modified after this copy was
+     * queued, i.e. its current `elements_sites.dateUpdated` no longer matches the
+     * snapshot taken when the copy was requested.
+     *
+     * Returns false when there is no snapshot (check disabled) or the site was not
+     * part of the snapshot, so those cases fall through to the normal copy.
+     *
+     * @param int $siteId
+     * @return bool
+     */
+    public function targetChangedSinceQueued(int $siteId): bool
+    {
+        if ($this->targetDateUpdated === null) {
+            return false;
+        }
+
+        $expected = $this->targetDateUpdated[(string)$siteId] ?? null;
+
+        if ($expected === null) {
+            return false;
+        }
+
+        $current = (new Query())
+            ->select(['dateUpdated'])
+            ->from(Table::ELEMENTS_SITES)
+            ->where(['elementId' => $this->elementId, 'siteId' => $siteId])
+            ->scalar();
+
+        return $current !== false && $current !== $expected;
     }
 
     // Protected Methods

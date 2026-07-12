@@ -1,7 +1,7 @@
 {
   "name": "teamnovu/craft-sitecopy",
   "description": "This plugin makes it easy to copy the content of an entry from a site to another",
-  "version": "4.0.3",
+  "version": "4.0.4",
   "license": "proprietary",
   "type": "craft-plugin",
   "minimum-stability": "dev",

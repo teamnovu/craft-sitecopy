@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.0.4 - 2026-07-10
+### Fixed
+
+- Fixed queued copies overwriting content that was edited on the target site after the copy was requested. The copy runs as a background job that re-reads the source element when it executes; if an editor opened the target site and changed its content while the job was still queued, the job would overwrite those changes with the source content. Each target site's modification date is now captured when the copy is requested, and any site edited after that point is skipped (with a warning logged) instead of being overwritten. Jobs queued by an earlier version are unaffected and run as before.
+
+## 4.0.3 - 2026-07-01
+### Fixed
+
+- Fixed a fatal error when editing an element with the Site Copy widget in the sidebar: the widget's asset bundle was still registered under the pre-rebrand `neustadt\sitecopy` namespace in a Twig template and could not be found after the 4.0.2 rename. This restores the sidebar widget, which was broken in 4.0.2.
+
 ## 4.0.2 - 2026-07-01
 ### Changed
 
