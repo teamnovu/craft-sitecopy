@@ -196,7 +196,7 @@ class SiteCopy extends Plugin
             $fieldLayout = $element->getFieldLayout();
             if ($fieldLayout) {
                 foreach ($fieldLayout->getCustomFields() as $field) {
-                    $siteCopyFields[] = ['value' => $field->handle, 'label' => $field->name];
+                    $siteCopyFields[] = ['value' => $field->handle, 'label' => Craft::t('site', $field->name)];
                     $siteCopyFieldHandles[] = $field->handle;
                 }
             }
