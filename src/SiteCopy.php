@@ -82,7 +82,10 @@ class SiteCopy extends Plugin
                         Product::class,
                         Element::EVENT_REGISTER_ACTIONS,
                         function (RegisterElementActionsEvent $event) {
-                            if (strpos($event->source, 'productType:') !== false) {
+                            if (
+                                str_contains($event->source, 'productType:')
+                                || str_contains($event->source, 'custom:')
+                            ) {
                                 $event->actions[] = new BulkCopy();
                             }
                         }
