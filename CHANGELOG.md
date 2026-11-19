@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 4.1.0 - 2026-11-19
 ### Added
 
 - MCP tools for Craft 5.12 and later: `site_copy_x_targets`, `site_copy_x_copy`, `site_copy_x_job_status` and `site_copy_x_rules_list`. An AI client connected to Craft's MCP server can now copy content between sites, check the copy jobs and list the automatic copy rules. The tools require control panel access, apply the same site and element permissions as the control panel and are never available anonymously. The copy tool is marked destructive, has a dry run and copies at most 50 elements per call. On Craft 4 and on Craft 5 before 5.12 nothing changes.
