@@ -28,6 +28,10 @@
                 name: 'sitecopy[sourceSite]',
                 value: currentSite ?? null,
             }) }}
+            {{ forms.hidden({
+                name: 'sitecopy[elementId]',
+                value: canonicalId ?? null,
+            }) }}
 
             {% if siteCopyFields is defined and siteCopyFields is not empty %}
                 <hr>

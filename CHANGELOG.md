@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+### Added
+
+- MCP tools for Craft 5.12 and later: `site_copy_x_targets`, `site_copy_x_copy`, `site_copy_x_job_status` and `site_copy_x_rules_list`. An AI client connected to Craft's MCP server can now copy content between sites, check the copy jobs and list the automatic copy rules. The tools require control panel access, apply the same site and element permissions as the control panel and are never available anonymously. The copy tool is marked destructive, has a dry run and copies at most 50 elements per call. On Craft 4 and on Craft 5 before 5.12 nothing changes.
+- Copy jobs record their outcome for each target site (kept for 7 days), so the job status can still be reported after Craft has removed the finished job from the queue.
+- Revisions created by a copy are attributed to the user who asked for it, with the note "Copied from {site} with Site Copy X".
+
+### Changed
+
+- A copy job that cannot save a target site now fails in the queue with the validation errors, after trying every other target site. It used to finish as if the copy had worked. Target sites edited after the copy was queued are still skipped, not failed.
+- Target sites are now also checked against the user's permission to save the element on that site.
+- The `site-copy-x/api/*` actions now only accept POST requests from the control panel, by users with control panel access, for supported element types. Logged-in front-end users could reach them before.
+- After a bulk copy, a notice says how many elements were queued.
+
+### Fixed
+
+- Fixed bulk copy only queueing the first of the selected elements (since 3.2.0).
+- Fixed bulk copy skipping disabled elements.
+- Fixed the sidebar copy doing nothing for elements with nested entries (e.g. Matrix or CKEditor entries): a nested entry saved in the same request took the copy instead of the element. The widget now also posts the ID of the element it belongs to.
+- Fixed the copy job failing with a TypeError when every field was unchecked in the sidebar. The other selected attributes are copied, or nothing if there are none.
+- Fixed "Select all" target sites also checking or unchecking every field checkbox, and not getting checked again when all sites were selected one by one.
+- Fixed the "missing on site" warning never showing in the bulk copy modal. It now covers all selected elements.
+- Fixed a target element deleted while the copy was queued, or a save lock timeout, stopping the copy to the remaining target sites.
+- Fixed Commerce variant relations and Link fields not being remapped to the target site. Disabled variants are now copied too.
+- Fixed the warnings in the sidebar and in the bulk copy modal not being translated.
+
 ## 4.0.4 - 2026-07-10
 ### Fixed
 

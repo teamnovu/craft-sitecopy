@@ -40,5 +40,13 @@ return [
     'Asset id'                                                                                                                                              => 'Datei Id',
     'Assets'                                                                                                                                                => 'Dateien',
     'Volume (handle)'                                                                                                                                       => 'Volumen (handle)',
-    'Select all'                                                                                                                                            => 'Alle auswählen'
+    'Select all'                                                                                                                                            => 'Alle auswählen',
+
+    'To which site should the elements be copied?' => 'Auf welche Seite sollen die Elemente kopiert werden?',
+    'Which fields to copy?'                        => 'Welche Felder sollen kopiert werden?',
+    'Copied from {site} with Site Copy X'          => 'Mit Site Copy X von {site} kopiert',
+    'Copy queued for {queued} of {total} elements.' => 'Kopie für {queued} von {total} Elementen in die Warteschlange gestellt.',
+    'Nothing was copied. Check the selected sites and your permissions.' => 'Es wurde nichts kopiert. Prüfen Sie die ausgewählten Seiten und Ihre Berechtigungen.',
+    'Warning: the element does not exist on the following sites and will not be copied: {sites}' => 'Achtung: Das Element existiert auf den folgenden Seiten nicht und wird dort nicht kopiert: {sites}',
+    'Warning: some of the selected elements do not exist on the following sites and will not be copied there: {sites}' => 'Achtung: Einige der ausgewählten Elemente existieren auf den folgenden Seiten nicht und werden dort nicht kopiert: {sites}',
 ];

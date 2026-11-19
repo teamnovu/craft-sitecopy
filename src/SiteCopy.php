@@ -17,11 +17,13 @@ use craft\elements\GlobalSet;
 use craft\commerce\elements\Product;
 use craft\events\DefineHtmlEvent;
 use craft\events\ElementEvent;
+use craft\events\RegisterComponentTypesEvent;
 use craft\events\RegisterElementActionsEvent;
 use craft\services\Elements;
 use craft\web\twig\variables\CraftVariable;
 use Exception;
 use teamnovu\sitecopy\elements\actions\BulkCopy;
+use teamnovu\sitecopy\mcp\SiteCopyTools;
 use teamnovu\sitecopy\models\SettingsModel;
 use yii\base\Event;
 
@@ -45,6 +47,10 @@ class SiteCopy extends Plugin
                 'sitecopy' => services\SiteCopy::class,
             ]
         );
+
+        // MCP requests are not CP requests (and `craft mcp/serve` is a console request),
+        // so this must stay outside the CP-only block below.
+        $this->registerMcpCapabilities();
 
         Craft::$app->onInit(function() {
             if (Craft::$app->getRequest()->getIsCpRequest()) {
@@ -145,6 +151,27 @@ class SiteCopy extends Plugin
     }
 
     /**
+     * Registers the Site Copy X tools with Craft's MCP server (Craft 5.12+).
+     *
+     * On older Craft versions the MCP classes don't exist and nothing happens. The SDK
+     * check covers future mcp/sdk releases that move the attribute classes.
+     */
+    private function registerMcpCapabilities(): void
+    {
+        if (!class_exists('craft\services\Mcp') || !class_exists('Mcp\Capability\Attribute\McpTool')) {
+            return;
+        }
+
+        Event::on(
+            \craft\services\Mcp::class,
+            \craft\services\Mcp::EVENT_REGISTER_CAPABILITY_TYPES,
+            function(RegisterComponentTypesEvent $event) {
+                $event->types[] = SiteCopyTools::class;
+            }
+        );
+    }
+
+    /**
      * @inheritdoc
      */
     protected function createSettingsModel(): ?\craft\base\Model
@@ -207,6 +234,7 @@ class SiteCopy extends Plugin
             [
                 'siteId'               => $element->siteId,
                 'elementId'            => $element->id,
+                'canonicalId'          => $element->getCanonicalId(),
                 'supportedSites'       => $sites,
                 'siteCopyEnabled'      => $siteCopyEnabled,
                 'selectedSites'        => $selectedSites,

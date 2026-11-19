@@ -8,7 +8,7 @@
 
         <div class="main">
             {% if siteCopyTargetOptions is not empty %}
-                <div class="pane sitecopy">
+                <div class="pane sitecopy" data-element-ids="{{ (ids ?? [])|join(',') }}" data-source-site-id="{{ siteId }}">
                     <div class="{{ siteCopyEnabled ? '' : 'hidden' }} sitecopy-options" id="sitecopy-options">
                         {{ forms.checkboxGroupField({
                             label: elementCount > 1 ? "To which site should the elements be copied?"|t('site-copy-x') : "To which site should it be copied?"|t('site-copy-x'),
@@ -38,58 +38,4 @@
         </div>
     </form>
 
-    <script>
-        (function() {
-            const elementId = {{ ids[0] ?? 'null' }};
-            const sourceSiteId = {{ siteId ?? 'null' }};
-
-            async function updateBulkCopyWarning() {
-                if (!elementId || !sourceSiteId) return;
-
-                const warningEl = document.getElementById('sitecopy-unavailable-warning');
-                if (!warningEl) return;
-
-                const selectedTargets = Array.from(
-                    document.querySelectorAll('input[name="sitecopy[targets]"]:checked')
-                ).map(function(el) { return parseInt(el.value); });
-
-                if (selectedTargets.length === 0) {
-                    warningEl.classList.add('hidden');
-                    return;
-                }
-
-                try {
-                    const response = await fetch(Craft.getActionUrl('site-copy-x/api/check-site-availability'), {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': Craft.csrfTokenValue },
-                        body: JSON.stringify({ elementId: elementId, sourceSiteId: sourceSiteId }),
-                    });
-
-                    const data = await response.json();
-                    if (!data.success) return;
-
-                    const availableIds = data.availableSites.map(function(s) { return s.id; });
-                    const unavailableSelected = selectedTargets.filter(function(id) { return !availableIds.includes(id); });
-
-                    if (unavailableSelected.length > 0) {
-                        const names = data.unavailableSites
-                            .filter(function(s) { return unavailableSelected.includes(s.id); })
-                            .map(function(s) { return s.name; })
-                            .join(', ');
-
-                        warningEl.textContent = Craft.t('site-copy-x', 'Warning: the element does not exist on the following sites and will not be copied: {sites}', { sites: names });
-                        warningEl.classList.remove('hidden');
-                    } else {
-                        warningEl.classList.add('hidden');
-                    }
-                } catch (e) {
-                    console.error('sitecopy availability check failed', e);
-                }
-            }
-
-            document.querySelectorAll('input[name="sitecopy[targets]"]').forEach(function(checkbox) {
-                checkbox.addEventListener('change', updateBulkCopyWarning);
-            });
-        })();
-    </script>
 </div>

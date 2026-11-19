@@ -1,20 +1,38 @@
+// Target-site checkboxes of a Site Copy pane, without the "Select all" toggle and
+// without the field checkboxes (which live in the same options container).
+function sitecopyTargetCheckboxes(sitecopyDiv) {
+  return Array.from(
+    sitecopyDiv.querySelectorAll('input[type="checkbox"][name="sitecopy[targets][]"]')
+  ).filter(function(el) { return !(el.id || '').endsWith('sitecopy-toggle-all'); });
+}
+
+// Element IDs of the pane: one in the sidebar (data-element-id), several in the
+// bulk copy overlay (data-element-ids, comma-separated).
+function sitecopyElementIds(sitecopyDiv) {
+  var raw = sitecopyDiv.dataset.elementIds || sitecopyDiv.dataset.elementId || '';
+
+  return raw.split(',')
+    .map(function(id) { return parseInt(id, 10); })
+    .filter(function(id) { return id > 0; });
+}
+
 document.addEventListener('change', function(e) {
   if (e.target.name !== 'sitecopy[targets][]') return;
 
   var sitecopyDiv = e.target.closest('.sitecopy');
   if (!sitecopyDiv) return;
 
-  var elementId = parseInt(sitecopyDiv.dataset.elementId);
-  var sourceSiteId = parseInt(sitecopyDiv.dataset.sourceSiteId);
-  if (!elementId || !sourceSiteId) return;
+  var elementIds = sitecopyElementIds(sitecopyDiv);
+  var sourceSiteId = parseInt(sitecopyDiv.dataset.sourceSiteId, 10);
+  if (!elementIds.length || !sourceSiteId) return;
 
   var warningEl = sitecopyDiv.querySelector('#sitecopy-unavailable-warning');
   if (!warningEl) return;
 
-  var selectedTargets = Array.from(
-    sitecopyDiv.querySelectorAll('input[type="checkbox"]:checked')
-  ).filter(function(el) { return el.name === 'sitecopy[targets][]'; })
-   .map(function(el) { return parseInt(el.value); });
+  var selectedTargets = sitecopyTargetCheckboxes(sitecopyDiv)
+    .filter(function(el) { return el.checked; })
+    .map(function(el) { return parseInt(el.value, 10); })
+    .filter(function(id) { return id > 0; });
 
   if (selectedTargets.length === 0) {
     warningEl.classList.add('hidden');
@@ -23,22 +41,28 @@ document.addEventListener('change', function(e) {
 
   fetch(Craft.getActionUrl('site-copy-x/api/check-site-availability'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': Craft.csrfTokenValue },
-    body: JSON.stringify({ elementId: elementId, sourceSiteId: sourceSiteId }),
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'X-CSRF-Token': Craft.csrfTokenValue,
+    },
+    body: JSON.stringify({ elementIds: elementIds, sourceSiteId: sourceSiteId }),
   })
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (!data.success) return;
 
-      var availableIds = data.availableSites.map(function(s) { return s.id; });
-      var unavailableSelected = selectedTargets.filter(function(id) { return !availableIds.includes(id); });
+      var unavailableSelected = data.unavailableSites.filter(function(s) {
+        return selectedTargets.includes(s.id);
+      });
 
       if (unavailableSelected.length > 0) {
-        var names = data.unavailableSites
-          .filter(function(s) { return unavailableSelected.includes(s.id); })
-          .map(function(s) { return s.name; })
-          .join(', ');
-        warningEl.textContent = Craft.t('site-copy-x', 'Warning: the element does not exist on the following sites and will not be copied: {sites}', { sites: names });
+        var names = unavailableSelected.map(function(s) { return s.name; }).join(', ');
+        var message = elementIds.length > 1
+          ? 'Warning: some of the selected elements do not exist on the following sites and will not be copied there: {sites}'
+          : 'Warning: the element does not exist on the following sites and will not be copied: {sites}';
+
+        warningEl.textContent = Craft.t('site-copy-x', message, { sites: names });
         warningEl.classList.remove('hidden');
       } else {
         warningEl.classList.add('hidden');
@@ -49,12 +73,10 @@ document.addEventListener('change', function(e) {
 
 function toggleSitecopyTargets(source) {
   const sitecopyDiv = source.closest('.sitecopy');
-  const checkboxes = sitecopyDiv.querySelectorAll('.sitecopy-options input[type="checkbox"]');
-  const isChecked = source.checked;
 
-  for (let i = 1, n = checkboxes.length; i < n; i++) {
-    checkboxes[i].checked = isChecked;
-  }
+  sitecopyTargetCheckboxes(sitecopyDiv).forEach(function(checkbox) {
+    checkbox.checked = source.checked;
+  });
 }
 
 function updateSitecopyToggleAll(source) {
@@ -62,8 +84,8 @@ function updateSitecopyToggleAll(source) {
   const toggleAll = sitecopyDiv.querySelector('[id$="sitecopy-toggle-all"]');
 
   if (toggleAll) {
-    const checkboxes = sitecopyDiv.querySelectorAll('.sitecopy-options input[type="checkbox"]');
-    toggleAll.checked = Array.from(checkboxes).every((checkbox) => checkbox.checked);
+    toggleAll.checked = sitecopyTargetCheckboxes(sitecopyDiv).every(function(checkbox) {
+      return checkbox.checked;
+    });
   }
 }
-
