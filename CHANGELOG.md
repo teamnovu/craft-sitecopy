@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.2.0 - 2026-11-23
+### Added
+
+- Bulk copy is now also available in Craft Commerce custom product sources, not only in the product type sources. Thanks [@bramnijssen](https://github.com/bramnijssen) ([#34](https://github.com/teamnovu/craft-sitecopy/pull/34)).
+
+### Changed
+
+- Field names in the field selection of the Site Copy sidebar are now translated with the `site` translation category, like the field labels in the edit form. Thanks [@jurriaanr](https://github.com/jurriaanr) ([#33](https://github.com/teamnovu/craft-sitecopy/pull/33)).
+
 ## 4.1.0 - 2026-11-19
 ### Added
 
