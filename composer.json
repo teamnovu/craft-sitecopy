@@ -6,7 +6,10 @@
   "type": "craft-plugin",
   "minimum-stability": "dev",
   "require": {
-    "craftcms/cms": "^4.5.11|^5.0.0"
+    "craftcms/cms": "^4.5.11|^5.0.0|^6.0.0-beta.1"
+  },
+  "suggest": {
+    "craftcms/yii2-adapter": "Required on Craft CMS 6, where it provides the Craft 5 APIs that Site Copy X uses. It can’t be installed on Craft CMS 4 or 5."
   },
   "autoload": {
     "psr-4": {

@@ -25,6 +25,7 @@ class ApiController extends Controller
     private const BULK_ELEMENT_TYPES = [
         Entry::class,
         Asset::class,
+        'CraftCms\Cms\Asset\Elements\Asset', // Craft 6 native assets (see SiteCopy::SUPPORTED_ELEMENT_TYPES)
         Category::class,
         'craft\commerce\elements\Product',
     ];
@@ -234,7 +235,19 @@ class ApiController extends Controller
      */
     private function isAllowedElementType(string $elementType, array $allowed): bool
     {
-        return in_array($elementType, $allowed, true) && class_exists($elementType);
+        if (!class_exists($elementType)) {
+            return false;
+        }
+
+        // Not a strict string match: on Craft 6 the CP posts native class names
+        // (e.g. CraftCms\Cms\Entry\Elements\Entry), which `craft\elements\Entry` only aliases.
+        foreach ($allowed as $class) {
+            if (class_exists($class) && is_a($elementType, $class, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -127,11 +127,14 @@ class SiteCopy extends Component
 
     /**
      * Element types that can be copied. Commerce is optional, so its class is a string.
+     * Craft 6 loads native assets, and the adapter's `craft\elements\Asset` is only a subclass
+     * of them, so the native class is listed too (as a string, it doesn't exist before Craft 6).
      */
     public const SUPPORTED_ELEMENT_TYPES = [
         Entry::class,
         GlobalSet::class,
         Asset::class,
+        'CraftCms\Cms\Asset\Elements\Asset',
         Category::class,
         'craft\commerce\elements\Product',
     ];
@@ -442,13 +445,17 @@ class SiteCopy extends Component
         ]);
 
         $priority = $this->settings ? (int)$this->settings->combinedSettingsQueuePriority : null;
-        $jobId = Queue::push($job, $priority);
 
-        if ($jobId === null || $jobId === '') {
+        try {
+            $jobId = Queue::push($job, $priority);
+        } catch (\Throwable $e) {
+            Craft::error("Could not queue the Site Copy X job for element $elementId: {$e->getMessage()}", __METHOD__);
             return null;
         }
 
-        $jobId = (string)$jobId;
+        // Craft 6 queues through Laravel, and the adapter's push() returns no job ID even
+        // though the job was queued. Track it by the result key instead.
+        $jobId = ($jobId === null || $jobId === '') ? $resultKey : (string)$jobId;
         CopyJobTracker::recordQueued($jobId, $resultKey, $elementId, $sourceSiteId, $siteIds, $userId);
 
         return $jobId;
@@ -620,7 +627,7 @@ class SiteCopy extends Component
      * @return array
      * @throws Exception
      */
-    public function handleSiteCopyActiveState(Entry|craft\commerce\elements\Product|Asset|GlobalSet|Category $element)
+    public function handleSiteCopyActiveState(ElementInterface $element)
     {
         if (!is_object($element)) {
             throw new Exception('Given value must be an object!');
@@ -641,7 +648,7 @@ class SiteCopy extends Component
             $targetId = $setting[4] ?? null;
 
             if (!empty($criteriaField) && !empty($operator) && !empty($value) && !empty($sourceId) && !empty($targetId)) {
-                if (($sourceId != '*' && (int)$sourceId != $element->siteId) || ($criteriaField !== 'typeHandle' && !$element->hasProperty($criteriaField))) {
+                if (($sourceId != '*' && (int)$sourceId != $element->siteId) || ($criteriaField !== 'typeHandle' && !$element->canGetProperty($criteriaField))) {
                     continue;
                 }
 
@@ -713,7 +720,7 @@ class SiteCopy extends Component
     /**
      * @return array
      */
-    public function getCombinedSettings(Entry|craft\commerce\elements\Product|Asset|GlobalSet|Category $element)
+    public function getCombinedSettings(ElementInterface $element)
     {
         $combinedSettings = [];
 
@@ -724,7 +731,7 @@ class SiteCopy extends Component
 
         if ($element instanceof GlobalSet) {
             $attribute = 'combinedSettingsGlobals';
-        } elseif ($element instanceof Asset) {
+        } elseif (\teamnovu\sitecopy\SiteCopy::isOneOf($element, [Asset::class])) {
             $attribute = 'combinedSettingsAssets';
         }
 

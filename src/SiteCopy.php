@@ -69,18 +69,28 @@ class SiteCopy extends Plugin
                     function (DefineHtmlEvent $event) {
                         $element = $event->sender;
 
-                        if (in_array(get_class($element), [Entry::class, Asset::class, 'craft\commerce\elements\Product', Category::class])) {
+                        if (self::isOneOf($element, [Entry::class, Asset::class, 'craft\commerce\elements\Product', Category::class])) {
                             $event->html .= $this->addSitecopyWidget($event->sender);
                         }
                     }
                 );
 
-                if (Craft::$app->getIsMultiSite() && Craft::$app->getSites()->getTotalEditableSites() > 1) {
+                // The editable-sites count is checked inside each handler, not here: on Craft 6
+                // plugins boot before the user is authenticated, so it would always be 0 here.
+                if (Craft::$app->getIsMultiSite()) {
+                    // Craft 6 loads native assets; the adapter's craft\elements\Asset is a
+                    // subclass of them, so a handler on it would never fire.
+                    $assetClass = class_exists('CraftCms\Cms\Asset\Elements\Asset')
+                        ? 'CraftCms\Cms\Asset\Elements\Asset'
+                        : Asset::class;
+
                     Event::on(
-                        Asset::class,
+                        $assetClass,
                         Element::EVENT_REGISTER_ACTIONS,
                         function (RegisterElementActionsEvent $event) {
-                            $event->actions[] = new BulkCopy();
+                            if (self::hasMultipleEditableSites()) {
+                                $event->actions[] = new BulkCopy();
+                            }
                         }
                     );
 
@@ -89,8 +99,8 @@ class SiteCopy extends Plugin
                         Element::EVENT_REGISTER_ACTIONS,
                         function (RegisterElementActionsEvent $event) {
                             if (
-                                str_contains($event->source, 'productType:')
-                                || str_contains($event->source, 'custom:')
+                                self::hasMultipleEditableSites()
+                                && (str_contains($event->source, 'productType:') || str_contains($event->source, 'custom:'))
                             ) {
                                 $event->actions[] = new BulkCopy();
                             }
@@ -101,7 +111,9 @@ class SiteCopy extends Plugin
                         Category::class,
                         Element::EVENT_REGISTER_ACTIONS,
                         function (RegisterElementActionsEvent $event) {
-                            $event->actions[] = new BulkCopy();
+                            if (self::hasMultipleEditableSites()) {
+                                $event->actions[] = new BulkCopy();
+                            }
                         }
                     );
 
@@ -109,7 +121,7 @@ class SiteCopy extends Plugin
                         Entry::class,
                         Element::EVENT_REGISTER_ACTIONS,
                         function (RegisterElementActionsEvent $event) {
-                            if (strpos($event->source, 'section:') !== false) {
+                            if (self::hasMultipleEditableSites() && strpos($event->source, 'section:') !== false) {
                                 try {
                                     $sectionUid = explode('section:', $event->source)[1];
                                     $section = Craft::$app->getEntries()->getSectionByUid($sectionUid);
@@ -151,6 +163,37 @@ class SiteCopy extends Plugin
                 );
             }
         });
+    }
+
+    /**
+     * Craft 6 loads its native element classes (e.g. `CraftCms\Cms\Asset\Elements\Asset`), and the
+     * yii2-adapter only aliases or subclasses them as `craft\elements\*`. So an exact class
+     * comparison never matches there, and `instanceof craft\elements\Asset` misses native assets.
+     * This matches the Craft 4/5 class or its Craft 6 native counterpart.
+     */
+    private static function hasMultipleEditableSites(): bool
+    {
+        return Craft::$app->getSites()->getTotalEditableSites() > 1;
+    }
+
+    public static function isOneOf(object $element, array $classes): bool
+    {
+        $nativeClasses = [
+            Entry::class => 'CraftCms\Cms\Entry\Elements\Entry',
+            Asset::class => 'CraftCms\Cms\Asset\Elements\Asset',
+        ];
+
+        foreach ($classes as $class) {
+            if ($element instanceof $class) {
+                return true;
+            }
+
+            if (isset($nativeClasses[$class]) && $element instanceof $nativeClasses[$class]) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -203,7 +246,7 @@ class SiteCopy extends Plugin
      * @throws \Twig\Error\SyntaxError
      * @throws \yii\base\Exception
      */
-    private function addSitecopyWidget(Entry|craft\commerce\elements\Product|Asset|GlobalSet|Category $element)
+    private function addSitecopyWidget(\craft\base\ElementInterface $element)
     {
         $isNew = $element->id === null;
         $sites = Craft::$app->getSites()->getAllSites();
