@@ -49,4 +49,5 @@ return [
     'Nothing was copied. Check the selected sites and your permissions.' => 'Es wurde nichts kopiert. Prüfen Sie die ausgewählten Seiten und Ihre Berechtigungen.',
     'Warning: the element does not exist on the following sites and will not be copied: {sites}' => 'Achtung: Das Element existiert auf den folgenden Seiten nicht und wird dort nicht kopiert: {sites}',
     'Warning: some of the selected elements do not exist on the following sites and will not be copied there: {sites}' => 'Achtung: Einige der ausgewählten Elemente existieren auf den folgenden Seiten nicht und werden dort nicht kopiert: {sites}',
+    'Craft CMS 6 doesn’t order queue jobs by priority: a value above 1024 only sends the job to the low-priority queue (the `lowPriorityQueueName` config setting).' => 'Craft CMS 6 sortiert Queue-Jobs nicht nach Priorität: Ein Wert über 1024 verschiebt den Job nur in die Queue mit niedriger Priorität (Konfigurationseinstellung `lowPriorityQueueName`).',
 ];

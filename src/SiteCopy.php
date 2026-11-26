@@ -22,7 +22,9 @@ use craft\events\RegisterElementActionsEvent;
 use craft\services\Elements;
 use craft\web\twig\variables\CraftVariable;
 use Exception;
+use teamnovu\sitecopy\assetbundles\sitecopy\BulkCopyAsset;
 use teamnovu\sitecopy\elements\actions\BulkCopy;
+use teamnovu\sitecopy\elements\actions\BulkCopyClientAction;
 use teamnovu\sitecopy\mcp\SiteCopyTools;
 use teamnovu\sitecopy\models\SettingsModel;
 use yii\base\Event;
@@ -75,11 +77,18 @@ class SiteCopy extends Plugin
                     }
                 );
 
-                // The editable-sites count is checked inside each handler, not here: on Craft 6
-                // plugins boot before the user is authenticated, so it would always be 0 here.
+                // Site count checked per handler: Craft 6 boots plugins before authenticating the user.
                 if (Craft::$app->getIsMultiSite()) {
-                    // Craft 6 loads native assets; the adapter's craft\elements\Asset is a
-                    // subclass of them, so a handler on it would never fire.
+                    if (self::isCraft6()) {
+                        $request = Craft::$app->getRequest();
+
+                        // Inertia visits keep the scripts loaded by the first full page load.
+                        if ($request->getIsGet() && !$request->getIsAjax()) {
+                            Craft::$app->getView()->registerAssetBundle(BulkCopyAsset::class);
+                        }
+                    }
+
+                    // Craft 6 loads native assets; the adapter's craft\elements\Asset is only a subclass.
                     $assetClass = class_exists('CraftCms\Cms\Asset\Elements\Asset')
                         ? 'CraftCms\Cms\Asset\Elements\Asset'
                         : Asset::class;
@@ -89,7 +98,7 @@ class SiteCopy extends Plugin
                         Element::EVENT_REGISTER_ACTIONS,
                         function (RegisterElementActionsEvent $event) {
                             if (self::hasMultipleEditableSites()) {
-                                $event->actions[] = new BulkCopy();
+                                $event->actions[] = self::bulkCopyAction();
                             }
                         }
                     );
@@ -102,7 +111,7 @@ class SiteCopy extends Plugin
                                 self::hasMultipleEditableSites()
                                 && (str_contains($event->source, 'productType:') || str_contains($event->source, 'custom:'))
                             ) {
-                                $event->actions[] = new BulkCopy();
+                                $event->actions[] = self::bulkCopyAction();
                             }
                         }
                     );
@@ -112,7 +121,7 @@ class SiteCopy extends Plugin
                         Element::EVENT_REGISTER_ACTIONS,
                         function (RegisterElementActionsEvent $event) {
                             if (self::hasMultipleEditableSites()) {
-                                $event->actions[] = new BulkCopy();
+                                $event->actions[] = self::bulkCopyAction();
                             }
                         }
                     );
@@ -124,10 +133,14 @@ class SiteCopy extends Plugin
                             if (self::hasMultipleEditableSites() && strpos($event->source, 'section:') !== false) {
                                 try {
                                     $sectionUid = explode('section:', $event->source)[1];
-                                    $section = Craft::$app->getEntries()->getSectionByUid($sectionUid);
+                                    // Craft 4 has getSectionByUid() on the sections service.
+                                    $sections = method_exists(Craft::$app->getEntries(), 'getSectionByUid')
+                                        ? Craft::$app->getEntries()
+                                        : Craft::$app->getSections();
+                                    $section = $sections->getSectionByUid($sectionUid);
 
                                     if ($section && $section->getHasMultiSiteEntries()) {
-                                        $event->actions[] = BulkCopy::class;
+                                        $event->actions[] = self::isCraft6() ? BulkCopyClientAction::create() : BulkCopy::class;
                                     }
                                 } catch (\Exception $e) {
                                     Craft::error($e->getMessage());
@@ -165,17 +178,25 @@ class SiteCopy extends Plugin
         });
     }
 
-    /**
-     * Craft 6 loads its native element classes (e.g. `CraftCms\Cms\Asset\Elements\Asset`), and the
-     * yii2-adapter only aliases or subclasses them as `craft\elements\*`. So an exact class
-     * comparison never matches there, and `instanceof craft\elements\Asset` misses native assets.
-     * This matches the Craft 4/5 class or its Craft 6 native counterpart.
-     */
     private static function hasMultipleEditableSites(): bool
     {
         return Craft::$app->getSites()->getTotalEditableSites() > 1;
     }
 
+    public static function isCraft6(): bool
+    {
+        return class_exists('CraftCms\Cms\Cms');
+    }
+
+    /**
+     * @return BulkCopy|\CraftCms\Cms\Element\Actions\ClientAction
+     */
+    private static function bulkCopyAction()
+    {
+        return self::isCraft6() ? BulkCopyClientAction::create() : new BulkCopy();
+    }
+
+    // Craft 6 loads native element classes, which craft\elements\* only alias or subclass.
     public static function isOneOf(object $element, array $classes): bool
     {
         $nativeClasses = [
@@ -197,14 +218,24 @@ class SiteCopy extends Plugin
     }
 
     /**
-     * Registers the Site Copy X tools with Craft's MCP server (Craft 5.12+).
+     * Registers the Site Copy X tools with Craft's MCP server (Craft 5.12+ and Craft 6).
      *
      * On older Craft versions the MCP classes don't exist and nothing happens. The SDK
      * check covers future mcp/sdk releases that move the attribute classes.
      */
     private function registerMcpCapabilities(): void
     {
-        if (!class_exists('craft\services\Mcp') || !class_exists('Mcp\Capability\Attribute\McpTool')) {
+        if (!class_exists('Mcp\Capability\Attribute\McpTool')) {
+            return;
+        }
+
+        if (class_exists('CraftCms\Cms\Mcp\CapabilityRegistry')) {
+            app(\CraftCms\Cms\Mcp\CapabilityRegistry::class)->register(SiteCopyTools::class);
+
+            return;
+        }
+
+        if (!class_exists('craft\services\Mcp')) {
             return;
         }
 
@@ -236,6 +267,7 @@ class SiteCopy extends Plugin
             'criteriaFieldOptionsGlobals' => services\SiteCopy::getCriteriaFieldsGlobals(),
             'criteriaFieldOptionsAssets'  => services\SiteCopy::getCriteriaFieldsAssets(),
             'criteriaOperatorOptions'     => services\SiteCopy::getOperators(),
+            'isCraft6'                    => self::isCraft6(),
         ]);
     }
 

@@ -33,7 +33,7 @@
         options: criteriaOperatorOptions,
     },
     {
-        type: 'text',
+        type: (isCraft6 ?? false) ? 'singleline' : 'text',
         heading: 'Value'|t('site-copy-x'),
     },
     {
@@ -74,7 +74,7 @@
         options: criteriaOperatorOptions,
     },
     {
-        type: 'text',
+        type: (isCraft6 ?? false) ? 'singleline' : 'text',
         heading: 'Value'|t('site-copy-x'),
     },
     {
@@ -115,7 +115,7 @@
         options: criteriaOperatorOptions,
     },
     {
-        type: 'text',
+        type: (isCraft6 ?? false) ? 'singleline' : 'text',
         heading: 'Value'|t('site-copy-x'),
     },
     {
@@ -160,5 +160,6 @@
     id: 'combinedSettingsQueuePriority',
     name: 'combinedSettingsQueuePriority',
     value: settings.combinedSettingsQueuePriority is not empty ? settings.combinedSettingsQueuePriority : 1024,
+    tip: (isCraft6 ?? false) ? 'Craft CMS 6 doesn’t order queue jobs by priority: a value above 1024 only sends the job to the low-priority queue (the `lowPriorityQueueName` config setting).'|t('site-copy-x') : null,
     errors: settings.getErrors('combinedSettingsQueuePriority')
 }) }}

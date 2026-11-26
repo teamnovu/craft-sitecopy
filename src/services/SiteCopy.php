@@ -126,9 +126,7 @@ class SiteCopy extends Component
     public const SKIP_CANNOT_SAVE = 'cannot_save';
 
     /**
-     * Element types that can be copied. Commerce is optional, so its class is a string.
-     * Craft 6 loads native assets, and the adapter's `craft\elements\Asset` is only a subclass
-     * of them, so the native class is listed too (as a string, it doesn't exist before Craft 6).
+     * Element types that can be copied. Commerce and the Craft 6 native asset are strings, they may not exist.
      */
     public const SUPPORTED_ELEMENT_TYPES = [
         Entry::class,
@@ -446,16 +444,30 @@ class SiteCopy extends Component
 
         $priority = $this->settings ? (int)$this->settings->combinedSettingsQueuePriority : null;
 
+        $isCraft6 = \teamnovu\sitecopy\SiteCopy::isCraft6();
+
         try {
             $jobId = Queue::push($job, $priority);
         } catch (\Throwable $e) {
+            // Craft 6's sync queue driver runs the job inside push().
+            if (!$isCraft6) {
+                throw $e;
+            }
+
             Craft::error("Could not queue the Site Copy X job for element $elementId: {$e->getMessage()}", __METHOD__);
             return null;
         }
 
-        // Craft 6 queues through Laravel, and the adapter's push() returns no job ID even
-        // though the job was queued. Track it by the result key instead.
-        $jobId = ($jobId === null || $jobId === '') ? $resultKey : (string)$jobId;
+        if ($jobId === null || $jobId === '') {
+            // Craft 6 returns no job ID, so the job is tracked by its result key.
+            if (!$isCraft6) {
+                return null;
+            }
+
+            $jobId = $resultKey;
+        }
+
+        $jobId = (string)$jobId;
         CopyJobTracker::recordQueued($jobId, $resultKey, $elementId, $sourceSiteId, $siteIds, $userId);
 
         return $jobId;

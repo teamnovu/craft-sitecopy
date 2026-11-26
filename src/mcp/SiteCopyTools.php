@@ -14,6 +14,8 @@ use craft\elements\User;
 use craft\helpers\ElementHelper;
 use craft\mcp\attributes\RequiresPermission;
 use craft\mcp\McpActor;
+use CraftCms\Cms\Mcp\Attributes\RequiresPermission as RequiresPermissionCraft6;
+use CraftCms\Cms\Mcp\McpActor as McpActorCraft6;
 use craft\models\Site;
 use craft\queue\Queue as CraftQueue;
 use craft\queue\QueueInterface;
@@ -29,11 +31,11 @@ use Throwable;
 use yii\queue\Queue as YiiQueue;
 
 /**
- * Site Copy X tools for Craft's MCP server (Craft 5.12+).
+ * Site Copy X tools for Craft's MCP server (Craft 5.12+ and Craft 6).
  *
- * Craft builds a new instance for every tool call, so only stateless services are
- * injected. This class is only referenced when Craft's MCP classes exist, see
+ * This class is only referenced when Craft's MCP classes exist, see
  * SiteCopy::registerMcpCapabilities(), so it may use PHP 8.2 syntax.
+ * Each tool has both versions' RequiresPermission; Craft reads only its own.
  */
 class SiteCopyTools
 {
@@ -58,11 +60,6 @@ class SiteCopyTools
         'description' => 'Site handle (e.g. "de"), language (e.g. "en") or numeric site ID.',
     ];
 
-    public function __construct(
-        private McpActor $actor,
-    ) {
-    }
-
     /**
      * @return array<string, mixed>
      */
@@ -73,13 +70,14 @@ class SiteCopyTools
         annotations: new ToolAnnotations(readOnlyHint: true),
     )]
     #[RequiresPermission('accessCp')]
+    #[RequiresPermissionCraft6('accessCp')]
     public function targets(
         #[Schema(description: 'ID of the element to copy (entry, asset, category, global set or Commerce product).', minimum: 1)]
         int $elementId,
         #[Schema(definition: self::SITE_SCHEMA)]
         string|int $sourceSite,
     ): array {
-        $user = $this->actor->user();
+        $user = $this->user();
         $service = $this->service();
         $source = $this->resolveSite($sourceSite, 'sourceSite');
         [$element, , $message] = $this->findSourceElement($elementId, $source, $user);
@@ -141,6 +139,7 @@ class SiteCopyTools
         meta: ['anthropic/requiresUserInteraction' => true],
     )]
     #[RequiresPermission('accessCp')]
+    #[RequiresPermissionCraft6('accessCp')]
     public function copy(
         #[Schema(definition: [
             'type' => 'array',
@@ -180,7 +179,7 @@ class SiteCopyTools
         #[Schema(description: 'Only report what would be copied, without queueing anything.')]
         bool $dryRun = false,
     ): array {
-        $user = $this->actor->user();
+        $user = $this->user();
         $service = $this->service();
         $ids = $service->normalizeIds($elementIds);
 
@@ -298,10 +297,11 @@ class SiteCopyTools
     #[McpTool(
         name: 'site_copy_x_job_status',
         title: 'Site Copy X: copy job status',
-        description: 'Shows the status of Site Copy X copy jobs: waiting, running (with progress), failed (with the error), finished or finished_with_errors, with the outcome for each target site. Covers copies queued with site_copy_x_copy and from the control panel. Without jobIds it lists your most recent copy jobs. Jobs are tracked for 7 days; "unknown" means no result was recorded.',
+        description: 'Shows the status of Site Copy X copy jobs: waiting, running (with progress), failed (with the error), finished or finished_with_errors, with the outcome for each target site. On Craft CMS 6, "queued" means waiting or running. Covers copies queued with site_copy_x_copy and from the control panel. Without jobIds it lists your most recent copy jobs. Jobs are tracked for 7 days; "unknown" means no result was recorded.',
         annotations: new ToolAnnotations(readOnlyHint: true),
     )]
     #[RequiresPermission('accessCp')]
+    #[RequiresPermissionCraft6('accessCp')]
     public function jobStatus(
         #[Schema(definition: [
             'type' => ['array', 'null'],
@@ -311,7 +311,7 @@ class SiteCopyTools
         ])]
         ?array $jobIds = null,
     ): array {
-        $user = $this->actor->user();
+        $user = $this->user();
         $ids = empty($jobIds)
             ? CopyJobTracker::getRecentJobIds((int)$user->id)
             : array_values(array_unique(array_map('strval', $jobIds)));
@@ -337,9 +337,10 @@ class SiteCopyTools
         annotations: new ToolAnnotations(readOnlyHint: true),
     )]
     #[RequiresPermission('accessCp')]
+    #[RequiresPermissionCraft6('accessCp')]
     public function rulesList(): array
     {
-        $this->actor->user();
+        $this->user();
         $settings = SiteCopy::getInstance()->getSettings();
         $method = in_array($settings->combinedSettingsCheckMethod, ['and', 'xor'], true)
             ? $settings->combinedSettingsCheckMethod
@@ -398,6 +399,15 @@ class SiteCopyTools
 
     // Private Methods
     // =========================================================================
+
+    private function user(): User
+    {
+        if (SiteCopy::isCraft6()) {
+            return app(McpActorCraft6::class)->user()->asElement();
+        }
+
+        return Craft::$container->get(McpActor::class)->user();
+    }
 
     private function service(): SiteCopyService
     {
@@ -591,6 +601,9 @@ class SiteCopyTools
             $status['error'] = (string)($details['error'] ?? '');
         } elseif ($result !== null) {
             $status['status'] = $this->resultHasErrors($result) ? 'finished_with_errors' : 'finished';
+        } elseif (!$this->queueReportsJobs()) {
+            $status['status'] = 'queued';
+            $status['message'] = 'No result yet: the job is waiting or running.';
         } else {
             $status['status'] = 'unknown';
             $status['message'] = 'The job is no longer in the queue and recorded no result. It may have been removed from the queue by hand.';
@@ -610,6 +623,10 @@ class SiteCopyTools
      */
     private function queueDetails(string $jobId, string $resultKey): ?array
     {
+        if (!$this->queueReportsJobs()) {
+            return null;
+        }
+
         $queue = Craft::$app->getQueue();
 
         if (!$queue instanceof QueueInterface) {
@@ -630,6 +647,12 @@ class SiteCopyTools
         }
 
         return $details;
+    }
+
+    // Craft 6's Laravel queue gives plugins no job IDs or state.
+    private function queueReportsJobs(): bool
+    {
+        return !SiteCopy::isCraft6();
     }
 
     private function resultHasErrors(array $result): bool

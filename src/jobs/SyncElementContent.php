@@ -320,25 +320,24 @@ class SyncElementContent extends BaseJob
             }
         }
 
-        $mutex = Craft::$app->getMutex();
-        $lockKey = "element:$siteElement->canonicalId";
+        $releaseLock = $this->lockElement((int)$siteElement->canonicalId);
 
-        if (!$mutex->acquire($lockKey, 15)) {
+        if ($releaseLock === null) {
             return [
                 'status' => self::OUTCOME_FAILED,
                 'errors' => ['Could not acquire a lock to save the element.'],
             ] + ($warnings ? ['warnings' => $warnings] : []);
         }
 
-        $siteElement->setScenario(Element::SCENARIO_ESSENTIALS);
-        $this->applyRevisionMeta($siteElement);
-
         try {
+            $siteElement->setScenario(Element::SCENARIO_ESSENTIALS);
+            $this->applyRevisionMeta($siteElement);
+
             // Disable propagation to prevent Craft from cascading nested entries
             // (e.g. Matrix blocks) back to the source site, which would cause duplicates.
             $saved = $elementsService->saveElement($siteElement, true, false);
         } finally {
-            $mutex->release($lockKey);
+            $releaseLock();
         }
 
         if (!$saved) {
@@ -352,6 +351,45 @@ class SyncElementContent extends BaseJob
         }
 
         return ['status' => self::OUTCOME_COPIED] + ($warnings ? ['warnings' => $warnings] : []);
+    }
+
+    /**
+     * @return callable|null Releases the lock; null on timeout.
+     */
+    protected function lockElement(int $elementId): ?callable
+    {
+        $key = "element:$elementId";
+
+        // Craft 6 core uses Laravel cache locks, not the adapter's Yii mutex.
+        if (SiteCopy::isCraft6()) {
+            // A sync queue can run the job inside the editor's save, which already holds this lock.
+            if (get_class(app('queue')->connection()) === \Illuminate\Queue\SyncQueue::class) {
+                return function() {
+                };
+            }
+
+            $lock = \Illuminate\Support\Facades\Cache::lock($key, 15);
+
+            try {
+                $lock->block(15);
+            } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
+                return null;
+            }
+
+            return function() use ($lock) {
+                $lock->release();
+            };
+        }
+
+        $mutex = Craft::$app->getMutex();
+
+        if (!$mutex->acquire($key, 15)) {
+            return null;
+        }
+
+        return function() use ($mutex, $key) {
+            $mutex->release($key);
+        };
     }
 
     /**
